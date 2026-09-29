@@ -39,7 +39,8 @@ from pipeline.core.data.base import DataObject
 
 class PipelineTest(TestCase):
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
-    def setUp(self):
+    @mock.patch("itsm.role.models.get_user_departments", return_value={})
+    def setUp(self, _get_user_departments):
         Ticket.objects.all().delete()
         CatalogService.objects.all().delete()
         self.ticket_id = self.create_ticket()
@@ -569,7 +570,11 @@ class PipelineTest(TestCase):
         )
 
         # ESB 旧调用：ComponentAPIException 无 resp（请求阶段异常）视为瞬时错误
-        self.assertTrue(BkOpsService.is_transient_error(ComponentAPIException("request failed")))
+        self.assertTrue(
+            BkOpsService.is_transient_error(
+                ComponentAPIException(None, "request failed")
+            )
+        )
 
         # 普通异常非瞬时错误
         self.assertFalse(BkOpsService.is_transient_error(ValueError("boom")))

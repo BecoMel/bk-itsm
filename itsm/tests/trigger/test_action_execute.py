@@ -31,7 +31,7 @@ from itsm.trigger.models import Action, ActionSchema
 
 
 class ActionTestCase(TestCase):
-    def __init__(self, *args, **kwargs):
+    def setUp(self):
         action_schema = ActionSchema.objects.create(component_type="update_ticket_status", name="async_task",)
         self.sync_task = Action.objects.create(
             signal="pre_state", sender="1", context={"ticket_id": 1}, schema_id=action_schema.id,
@@ -39,7 +39,6 @@ class ActionTestCase(TestCase):
         self.async_task = Action.objects.create(
             signal="pre_state", sender="1", context={"ticket_id": 1}, schema_id=action_schema.id,
         )
-        super(ActionTestCase, self).__init__(*args, **kwargs)
 
     # def test_sync_action(self):
     #     self.sync_task.execute()

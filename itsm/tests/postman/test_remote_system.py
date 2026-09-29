@@ -25,10 +25,22 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from django.test import TestCase, override_settings
 
+from itsm.postman.models import RemoteSystem
+
 
 class TestRemoteSystem(TestCase):
     def setUp(self) -> None:
-        pass
+        RemoteSystem.objects.all().delete()
+        for index in range(2):
+            RemoteSystem.objects.create(
+                creator="unit_test_user",
+                updated_by="unit_test_user",
+                name="test-system-{}".format(index),
+                code="TEST_SYSTEM_{}".format(index),
+                domain="https://example.com",
+                owners="unit_test_user",
+                project_key="public",
+            )
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
     def test_list(self):
@@ -38,7 +50,7 @@ class TestRemoteSystem(TestCase):
 
         self.assertEqual(resp.data["result"], True)
         self.assertEqual(resp.data["code"], "OK")
-        self.assertEqual(len(resp.data["data"]), 6)
+        self.assertEqual(len(resp.data["data"]), 2)
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
     def test_get_systems(self):

@@ -37,7 +37,8 @@ from pipeline.core.data.base import DataObject
 
 class PipelineTest(TestCase):
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
-    def setUp(self):
+    @mock.patch("itsm.role.models.get_user_departments", return_value={})
+    def setUp(self, _get_user_departments):
         Ticket.objects.all().delete()
         CatalogService.objects.all().delete()
         self.ticket_id = self.create_ticket()
@@ -219,13 +220,15 @@ class PipelineTest(TestCase):
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
     @mock.patch(
-        "itsm.pipeline_plugins.components.collections.itsm_auto.conditions_conversion")
-    def test_get_rsp_content(self, conditions_conversion):
-        conditions_conversion.return_value = {}
+        "itsm.pipeline_plugins.components.collections.itsm_auto.AutoStateService.poll_proceed",
+        return_value=(False, {}),
+    )
+    def test_get_rsp_content(self, poll_proceed):
         ticket = Ticket.objects.get(id=self.ticket_id)
         
         auto_service = AutoStateService(name="itsm")
         auto_service._runtime_attrs = {"by_flow": 1}
         result = auto_service.get_rsp_content(ticket, 2, {}, "{}", {})
         self.assertEqual(result[0], False)
+        poll_proceed.assert_called_once_with({}, "{}")
 

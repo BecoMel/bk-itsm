@@ -28,6 +28,9 @@ from datetime import datetime
 import mock
 from django.test import TestCase, override_settings
 
+from itsm.postman.models import RemoteApi, RemoteSystem
+from itsm.trigger.models import Trigger
+
 
 class WorkflowSerializerTest(TestCase):
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
@@ -55,6 +58,39 @@ class WorkflowSerializerTest(TestCase):
         patch_base_workflow_element_iam_auth_has_object_permission.return_value = True
         patch_workflow_iam_auth_has_object_permission.return_value = True
 
+        remote_system, _ = RemoteSystem.objects.get_or_create(
+            code="UNIT_TEST_SYSTEM",
+            defaults={
+                "creator": "unit_test_user",
+                "updated_by": "unit_test_user",
+                "name": "unit-test-system",
+                "domain": "https://example.com",
+                "owners": "unit_test_user",
+                "project_key": "public",
+            },
+        )
+        if not RemoteApi.objects.filter(
+            read_only=True, is_builtin=True, func_name="search_business"
+        ).exists():
+            RemoteApi.objects.create(
+                creator="unit_test_user",
+                updated_by="unit_test_user",
+                remote_system=remote_system,
+                name="search-business",
+                path="/unit-test/search-business/",
+                version="v1",
+                func_name="search_business",
+                method="POST",
+                owners="unit_test_user",
+                req_headers=[],
+                req_params=[],
+                req_body={},
+                rsp_data={},
+                read_only=True,
+                is_builtin=True,
+                is_activated=True,
+            )
+
         workflow_name = "test_now_{}".format(datetime.now().strftime("%Y%m%d%H%M%S"))
         create_data = {
             "name": workflow_name,
@@ -74,6 +110,17 @@ class WorkflowSerializerTest(TestCase):
         self.assertEqual(create_rsp.data["message"], "success")
         self.assertIsInstance(create_rsp.data["data"], dict)
         workflow_id = create_rsp.data["data"]["id"]
+        Trigger.objects.create(
+            name="unit-test-trigger",
+            desc="",
+            signal="ENTER_STATE",
+            sender=str(workflow_id),
+            source_type="workflow",
+            source_id=workflow_id,
+            project_key="0",
+            is_draft=False,
+            is_enabled=True,
+        )
 
         state_url = "/api/workflow/states/?workflow={}".format(workflow_id)
         state_rsp = self.client.get(

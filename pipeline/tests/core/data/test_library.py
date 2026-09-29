@@ -19,12 +19,21 @@ from pipeline.core.data.var import LazyVariable
 
 
 class TestLibrary(TestCase):
-    class VarIpPickerVariable(LazyVariable):
-        code = "ip"
-        form = "var.js"
+    @classmethod
+    def setUpClass(cls):
+        super(TestLibrary, cls).setUpClass()
 
-        def get_value(self):
-            return self.value
+        # LazyVariable class creation emits a signal which writes its registry
+        # row.  Define it only after Django has created the temporary test DB;
+        # module-level creation runs during pytest collection, before tables exist.
+        class VarIpPickerVariable(LazyVariable):
+            code = "ip"
+            form = "var.js"
+
+            def get_value(self):
+                return self.value
+
+        cls.VarIpPickerVariable = VarIpPickerVariable
 
     def setUp(self):
         self.name = "${ip}"

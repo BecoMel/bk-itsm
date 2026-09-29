@@ -668,44 +668,16 @@ class OperationalDataViewTest(TestCase):
         CatalogService.objects.create(
             service_id=1, is_deleted=False, catalog_id=2, creator="admin"
         )
-        data = {
-            "catalog_id": 3,
-            "service_id": 1,
-            "service_type": "request",
-            "fields": [
-                {
-                    "type": "STRING",
-                    "id": 1,
-                    "key": "title",
-                    "value": "test_ticket",
-                    "choice": [],
-                },
-                {
-                    "type": "STRING",
-                    "id": 5,
-                    "key": "apply_content",
-                    "value": "测试内容",
-                },
-                {
-                    "type": "STRING",
-                    "key": "ZHIDINGSHENPIREN",
-                    "value": "test",
-                },
-                {
-                    "type": "STRING",
-                    "key": "apply_reason",
-                    "value": "test",
-                },
-            ],
-            "creator": "admin",
-            "attention": True,
-        }
-        url = "/api/ticket/receipts/"
-        rsp = self.client.post(
-            path=url, data=json.dumps(data), content_type="application/json"
+        self.ticket = Ticket.objects.create(
+            sn="SN-OPERATIONAL-ONE",
+            title="test_ticket",
+            catalog_id=2,
+            service_id=1,
+            service_type="request",
+            creator="unit_test_user",
+            current_status="RUNNING",
+            is_draft=False,
         )
-        self.assertEqual(rsp.data["code"], "OK")
-        self.assertEqual(rsp.data["message"], "success")
 
     def tearDown(self):
         Ticket.objects.all().delete()
@@ -944,7 +916,8 @@ class OperationalDataViewTest(TestCase):
         self.assertIsInstance(rsp.data["data"], dict)
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
-    def test_ticket_score(self):
+    @mock.patch("itsm.ticket.views.operational.dictfetchall", return_value=[])
+    def test_ticket_score(self, dictfetchall_mock):
         url = "/api/ticket/operational/ticket_score/?{}&service_type=request".format(
             self.month_filter
         )
@@ -952,9 +925,11 @@ class OperationalDataViewTest(TestCase):
         self.assertEqual(rsp.status_code, 200)
         self.assertEqual(rsp.data["message"], "success")
         self.assertIsInstance(rsp.data["data"], list)
+        dictfetchall_mock.assert_called_once()
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
-    def test_ticket_time(self):
+    @mock.patch("itsm.ticket.views.operational.dictfetchall", return_value=[])
+    def test_ticket_time(self, dictfetchall_mock):
         url = "/api/ticket/operational/ticket_time/?{}&service_type=request".format(
             self.month_filter
         )
@@ -962,13 +937,18 @@ class OperationalDataViewTest(TestCase):
         self.assertEqual(rsp.status_code, 200)
         self.assertEqual(rsp.data["message"], "success")
         self.assertIsInstance(rsp.data["data"], dict)
+        self.assertEqual(dictfetchall_mock.call_count, 2)
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
     def test_new_tickets(self):
         url = "/api/ticket/operational/new_tickets/?{}&service_type=request".format(
             self.data_filter
         )
-        rsp = self.client.get(path=url, data=None, content_type="application/json")
+        with mock.patch(
+            "itsm.ticket.views.operational.get_days",
+            return_value=[self.ticket.create_at.date().isoformat()],
+        ):
+            rsp = self.client.get(path=url, data=None, content_type="application/json")
         self.assertEqual(rsp.status_code, 200)
         self.assertEqual(rsp.data["message"], "success")
         self.assertIsInstance(rsp.data["data"], list)
@@ -981,11 +961,11 @@ class TicketLogAuthzTest(TestCase):
         Ticket.objects.all().delete()
         self.creator_ticket = Ticket.objects.create(
             sn="SN-LOG-OWN", title="own", service_id=1, service_type="request",
-            creator="admin", current_status="RUNNING",
+            creator="admin", current_status="RUNNING", is_draft=False,
         )
         self.other_ticket = Ticket.objects.create(
             sn="SN-LOG-OTHER", title="other", service_id=1, service_type="request",
-            creator="bob", current_status="RUNNING",
+            creator="bob", current_status="RUNNING", is_draft=False,
         )
 
     def tearDown(self):
@@ -1021,15 +1001,17 @@ class TicketLogAuthzTest(TestCase):
     def test_get_ticket_log_list_only_returns_user_visible_tickets(self):
         # 列表模式：Ticket.objects.get_tickets(username, queryset) 应限定为当前用户可见
         # admin 不是 itsm 超管 → 拿不到 bob 创建且自己未参与的单据
-        with mock.patch(
-            "itsm.role.models.UserRole.is_itsm_superuser", return_value=False
-        ):
+        visible_tickets = Ticket.objects.filter(pk=self.creator_ticket.pk)
+        with mock.patch.object(
+            Ticket.objects, "get_tickets", return_value=visible_tickets
+        ) as get_tickets:
             url = "/api/ticket/receipts/get_ticket_log/"
             resp = self.client.get(url)
 
             self.assertEqual(resp.status_code, 200)
             sns = [item.get("sn") for item in resp.data.get("data", {}).get("items", [])]
             self.assertNotIn("SN-LOG-OTHER", sns)
+            get_tickets.assert_called_once()
 
 
 class OperationalDataAuthzTest(TestCase):

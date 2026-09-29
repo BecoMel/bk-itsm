@@ -23,11 +23,11 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-import json
+from unittest import mock
 
 from django.test import TestCase
 
-from blueking.component.shortcuts import ComponentClient
+from blueking.component.open.client import ComponentClient
 
 
 class TestAPI(TestCase):
@@ -46,5 +46,13 @@ class TestAPI(TestCase):
         params = {
             'bk_biz_id': 1,
         }
-        result = self.client.job.get_job_list(params)
-        print(json.dumps(result))
+        expected = {"result": True, "data": []}
+        response = mock.Mock(status_code=200)
+        response.json.return_value = expected
+        with mock.patch.object(
+            ComponentClient, "request", return_value=response
+        ) as request:
+            result = self.client.job.get_job_list(params)
+
+        self.assertEqual(result, expected)
+        request.assert_called_once()

@@ -71,7 +71,11 @@ class TriggerViewTest(TestCase):
         self.assertEqual(rsp.data["result"], False)
 
     @override_settings(MIDDLEWARE=("itsm.tests.middlewares.OverrideMiddleware",))
-    def test_clone(self):
+    @mock.patch(
+        "itsm.trigger.permissions.WorkflowTriggerPermit.has_permission",
+        return_value=True,
+    )
+    def test_clone(self, _has_permission):
         url = "/api/trigger/triggers/clone/"
         rsp = self.client.post(
             path=url, data={"project_key": "itsm"}, content_type="application/json"

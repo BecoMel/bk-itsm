@@ -34,7 +34,7 @@ from itsm.component.notify import WeixinNotifier, EmailNotifier, SmsNotifier
 
 
 class SubComponentTriggerTestCase(TestCase):
-    def __init__(self, *args, **kwargs):
+    def setUp(self):
         self.test_source_id = 1146
         self.ticket_id = 1123
         params = {
@@ -125,7 +125,6 @@ class SubComponentTriggerTestCase(TestCase):
 
         self.rule_manager = TriggerRuleManager(trigger=self.trigger)
 
-        super(SubComponentTriggerTestCase, self).__init__(*args, **kwargs)
 
     # @mock.patch.object(EmailNotifier, "send")
     # @mock.patch.object(SmsNotifier, "send")

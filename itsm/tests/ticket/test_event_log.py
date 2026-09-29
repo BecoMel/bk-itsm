@@ -30,7 +30,7 @@ from django.test import TestCase, override_settings
 
 from itsm.service.models import CatalogService
 from itsm.tests.ticket.params import CREATE_TICKET_PARAMS
-from itsm.ticket.models import TicketEventLog
+from itsm.ticket.models import Ticket, TicketEventLog
 
 
 class TicketEventLogTestCase(TestCase):
@@ -72,12 +72,26 @@ class TicketEventLogTestCase(TestCase):
         与权限链解耦的纵深：即便 ``EventLogPermissionValidate`` 出现回归，
         ``get_queryset`` 也不会把全表泄露给调用方。
         """
+        first_ticket = Ticket.objects.create(
+            sn="SN-EVENT-ONE",
+            title="event-one",
+            service_id=1,
+            service_type="request",
+            creator="unit_test_user",
+        )
+        second_ticket = Ticket.objects.create(
+            sn="SN-EVENT-TWO",
+            title="event-two",
+            service_id=1,
+            service_type="request",
+            creator="unit_test_user",
+        )
         TicketEventLog.objects.create(
-            ticket_id=1, workflow_id=1, from_state_id=1,
+            ticket_id=first_ticket.id, workflow_id=1, from_state_id=1,
             type="state", operator="alice", message="",
         )
         TicketEventLog.objects.create(
-            ticket_id=2, workflow_id=1, from_state_id=1,
+            ticket_id=second_ticket.id, workflow_id=1, from_state_id=1,
             type="state", operator="bob", message="",
         )
 
