@@ -33,7 +33,7 @@ import jsonschema
 from blueapps.utils.logger import logger_celery as logger
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import DatabaseError, close_old_connections, transaction
 from django.utils.translation import gettext as _
 
 from itsm.component.constants import (
@@ -396,6 +396,44 @@ class AutoStateService(ItsmBaseService):
 
         return True
 
+    @staticmethod
+    def record_schedule_exception(ticket_id, state_id, error):
+        """只记录异常失败，保留重试参数、输出变量及节点上下文。"""
+        if isinstance(error, DatabaseError):
+            close_old_connections()
+
+        ticket = Ticket.objects.get(id=ticket_id)
+        message = _("网络波动异常，数据更新失败，请手动重试")
+        with transaction.atomic():
+            node_status = ticket.node_status.select_for_update().get(state_id=state_id)
+            # 已结束或已处理过的节点不重复记录，也不覆盖并发操作的结果。
+            if node_status.status not in node_status.RUNNING_STATUS:
+                return
+
+            node_status.status = FAILED
+            node_status.action_type = TRANSITION_OPERATE
+            node_status.error_message = message
+            node_status.contexts = dict(node_status.contexts or {}, ex_data=message)
+            node_status.save(update_fields=["status", "action_type", "error_message", "contexts"])
+
+            # 异常收尾不依赖通知队列、API配置序列化或输出变量更新。
+            TicketEventLog.objects.create(
+                ticket=ticket,
+                workflow_id=ticket.flow_id,
+                from_state_id=state_id,
+                from_state_name=node_status.name,
+                status=node_status.id,
+                type=SYSTEM_OPERATE,
+                operator="system",
+                processors_type=node_status.processors_type,
+                processors=node_status.processors,
+                processors_snap="system",
+                source=SYSTEM_OPERATE,
+                action=ACTION_DICT.get(SYSTEM_OPERATE),
+                message="自动处理单据任务 【{name}】执行失败：{detail_message}",
+                detail_message=message,
+            )
+
     def schedule(self, data, parent_data, callback_data=None):
         """
         API执行和轮询逻辑
@@ -495,7 +533,12 @@ class AutoStateService(ItsmBaseService):
             logger.exception(
                 f"[auto_state] data=>{data}, callback=>{callback_data}, e=>{e}"
             )
-            raise e
+            try:
+                self.record_schedule_exception(parent_data.inputs.ticket_id, data.inputs.state_id, e)
+            except Exception:
+                # 数据库仍不可用时保留原始异常，交由引擎记录失败。
+                logger.exception("[auto_state] failed to record node exception")
+            raise
 
     def outputs_format(self):
         return []
