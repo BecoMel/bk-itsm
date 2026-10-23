@@ -28,15 +28,40 @@ from __future__ import absolute_import, unicode_literals
 from django.utils.translation import gettext as _
 from rest_framework import serializers
 
+from itsm.component.constants import (
+    APPROVAL_STATE,
+    QUEUEING,
+    SIGN_STATE,
+    TRANSITION_OPERATE,
+)
 from itsm.component.exceptions import ParamError
 from itsm.component.utils.conversion import format_exp_value
-from itsm.ticket.models import TicketGlobalVariable, LEN_MIDDLE
+from itsm.ticket.models import LEN_MIDDLE, SignTask, TicketGlobalVariable
 from itsm.ticket.validators import (
     required_validate,
     choice_validate,
     regex_validate,
     custom_regex_validate,
 )
+
+
+PROCESSED_SIGN_TASK_STATUSES = ["RUNNING", "EXECUTED", "FINISHED"]
+
+
+def is_node_submission_processing(username, status, action_type):
+    """判断当前请求是否为正在处理中的重复提交。"""
+
+    if action_type != TRANSITION_OPERATE or status.status != QUEUEING:
+        return False
+
+    if status.type not in [SIGN_STATE, APPROVAL_STATE]:
+        return status.processors_type == "OPEN" or status.is_operator(username)
+
+    return SignTask.objects.filter(
+        status_id=status.id,
+        processor=username,
+        status__in=PROCESSED_SIGN_TASK_STATUSES,
+    ).exists()
 
 
 def openapi_operate_validate(username, ticket, state_id=None, action_type=None):
