@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-import traceback
 from functools import wraps
 
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from django.utils.translation import gettext as _
 
 from common.log import logger
-from itsm.component.drf.exception import ValidationError
 from itsm.component.exceptions import (
     TicketNotFoundError,
     ServerError,

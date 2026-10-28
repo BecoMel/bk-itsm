@@ -31,6 +31,7 @@ from rest_framework import serializers
 from itsm.component.constants import (
     APPROVAL_STATE,
     QUEUEING,
+    RUNNING,
     SIGN_STATE,
     TRANSITION_OPERATE,
 )
@@ -48,20 +49,28 @@ from itsm.ticket.validators import (
 PROCESSED_SIGN_TASK_STATUSES = ["RUNNING", "EXECUTED", "FINISHED"]
 
 
-def is_node_submission_processing(username, status, action_type):
-    """判断当前请求是否为正在处理中的重复提交。"""
+def get_node_submission_message(username, status, action_type):
+    """区分当前操作人的节点提交正在处理和已经处理。"""
 
-    if action_type != TRANSITION_OPERATE or status.status != QUEUEING:
-        return False
+    if action_type != TRANSITION_OPERATE or status.status not in [RUNNING, QUEUEING]:
+        return None
 
-    if status.type not in [SIGN_STATE, APPROVAL_STATE]:
-        return status.processors_type == "OPEN" or status.is_operator(username)
+    if status.type in [SIGN_STATE, APPROVAL_STATE]:
+        task = SignTask.objects.filter(
+            status_id=status.id,
+            processor=username,
+            status__in=PROCESSED_SIGN_TASK_STATUSES,
+        ).first()
+        if task:
+            if task.status == RUNNING:
+                return _("节点正在处理中，请勿重复提交")
+            return _("您已处理该节点，请刷新查看处理结果")
+    elif status.status == QUEUEING and (
+        status.processors_type == "OPEN" or status.is_operator(username)
+    ):
+        return _("节点正在处理中，请勿重复提交")
 
-    return SignTask.objects.filter(
-        status_id=status.id,
-        processor=username,
-        status__in=PROCESSED_SIGN_TASK_STATUSES,
-    ).exists()
+    return None
 
 
 def openapi_operate_validate(username, ticket, state_id=None, action_type=None):
@@ -82,8 +91,11 @@ def openapi_operate_validate(username, ticket, state_id=None, action_type=None):
             )
         if status.status == "FINISHED":
             raise serializers.ValidationError(
-                _("抱歉，当前节点：{} 已经结束").format(state_id)
+                _("当前节点：{} 已处理完成，请刷新查看处理结果").format(state_id)
             )
+        submission_message = get_node_submission_message(username, status, action_type)
+        if submission_message:
+            raise serializers.ValidationError(submission_message)
         if not status.can_operate(username, action_type):
             raise serializers.ValidationError(
                 _("抱歉，{}不能操作该节点（没有权限或操作类型不支持）").format(username)

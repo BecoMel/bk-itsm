@@ -82,7 +82,6 @@ from itsm.openapi.ticket.serializers import (
 from itsm.openapi.ticket.tasks import openapi_start_ticket
 from itsm.openapi.ticket.utils import edit_ticket_field
 from itsm.openapi.ticket.validators import (
-    is_node_submission_processing,
     openapi_operate_validate,
     openapi_suspend_validate,
     openapi_unsuspend_validate,
@@ -571,26 +570,6 @@ class TicketViewSet(ApiGatewayMixin, component_viewsets.ModelViewSet):
         )
 
         ticket = Ticket.objects.get(sn=sn)
-        status = (
-            ticket.status(state_id)
-            if state_id and action_type == TRANSITION_OPERATE
-            else None
-        )
-        if (
-            not ticket.is_over
-            and not ticket.is_slave
-            and status
-            and is_node_submission_processing(operator, status, action_type)
-        ):
-            return Response(
-                {
-                    "result": False,
-                    "code": OperateTicketError.ERROR_CODE_INT,
-                    "data": None,
-                    "message": "节点正在处理中，请稍等",
-                }
-            )
-
         openapi_operate_validate(operator, ticket, state_id, action_type)
 
         if action_type == TRANSITION_OPERATE:
